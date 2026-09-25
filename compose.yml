@@ -1,0 +1,56 @@
+services:
+  postgres:
+    container_name: postgres
+    image: postgres:18.6-bookworm
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql
+
+  redis:
+    container_name: redis
+    image: redis:8.8.2
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    restart: always
+    volumes:
+      - redis_data:/data
+
+  rabbitmq:
+    container_name: rabbitmq
+    image: rabbitmq:4-management
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RMQ_USER}
+      - RABBITMQ_DEFAULT_PASS=${RMQ_PASSWORD}
+    restart: always
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  port-forwarder:
+    container_name: port-forwarder
+    image: alpine/socat:1.8.0.3
+    entrypoint: |
+      /bash/sh -c "
+        socat -d -d tcp-listen:5432,fork,reuseaddr tcp-connect:todo-postgres:5432 &
+        socat -d -d tcp-listen:6379,fork,reuseaddr tcp-connect:todo-postgres:6379 &
+        socat -d -d tcp-listen:5672,fork,reuseaddr tcp-connect:todo-rabbitmq:5672 &
+        socat -d -d tcp-listen:15672,fork,reuseaddr tcp-connect:todo-rabbitmq:15672 &
+        wait
+      "
+    ports:
+      - '127.0.0.1:5432:5432'
+      - '127.0.0.1:6379:6379'
+      - '127.0.0.1:5672:5672'
+      - '127.0.0.1:15672:15672'
+
+  migrate:
+    image: migrate/migrate:v4.19.1
+    volumes:
+      - ${PROJECT_ROOT}/migrations:/migrations
+
+volumes:
+  postgres_data:
+  redis_data:
+  rabbitmq_data:
