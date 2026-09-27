@@ -6,25 +6,25 @@ export PROJECT_ROOT=$(shell pwd)
 .DEFAULT_GOAL=help
 
 env-up: ## env: Запустить окружение проекта
-	@docker compose up -d todo-postgres todo-redis todo-rabbitmq
+	@docker compose up -d postgres redis rabbitmq
 
 env-down: ## env: Остановить окружение проекта
-	@docker compose down todo-postgres todo-redis todo-rabbitmq
+	@docker compose down postgres redis rabbitmq
 
 env-cleanup: ## env: Очистить окружение проекта
 	@read -p "Очистить все volume файлы окружения? Опасность утери данных. [y/N]: " ans; \
 	if [ "$$ans" == "y" ]; then \
-		docker compose down -v todo-postgres todo-redis todo-rabbitmq todo-port-forwarder && \
+		docker compose down -v postgres redis rabbitmq port-forwarder && \
 		echo "Файлы окружения очищены"; \
 	else \
 		echo "Очистка окружения отменена"; \
 	fi;
 
 env-port-forward: ## env: Открыть порты сервисов окружения
-	@docker compose up -d todo-port-forwarder
+	@docker compose up -d port-forwarder
 
 env-port-close: ## env: Закрыть порты сервисов окружения
-	@docker compose down todo-port-forwarder
+	@docker compose down port-forwarder
 
 logs-cleanup: ## env: Очистить файлы логов из out/logs
 	@read -p "Очистить все log файлы? Опасность утери логов. [y/N]: " ans; \
@@ -51,7 +51,7 @@ migrate-create: ## PostgreSQL: Создать новую версию схемы
 		echo "Отсутствует необходимый параметр seq. Пример: make migrate-create seq=init"; \
 		exit 1; \
 	fi; \
-	docker compose run --rm todo-migrate \
+	docker compose run --rm migrate \
 		create \
 		-ext sql \
 		-dir /migrations \
@@ -68,9 +68,9 @@ migrate-action:
 		echo "Отсутствует необходимый параметр action. Пример: make migrate-action action=up"; \
 		exit 1; \
 	fi; \
-	docker compose run --rm todo-migrate \
+	docker compose run --rm migrate \
 		-path /migrations \
-		-database postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@todo-postgres:5432/${POSTGRES_DB}?sslmode=disable \
+		-database postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable \
 		"$(action)"
 
 dev: ## Golang приложение: Запустить локально на хост-системе (для локальной разработки)

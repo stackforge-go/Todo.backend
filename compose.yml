@@ -32,11 +32,11 @@ services:
     container_name: port-forwarder
     image: alpine/socat:1.8.0.3
     entrypoint: |
-      /bash/sh -c "
-        socat -d -d tcp-listen:5432,fork,reuseaddr tcp-connect:todo-postgres:5432 &
-        socat -d -d tcp-listen:6379,fork,reuseaddr tcp-connect:todo-postgres:6379 &
-        socat -d -d tcp-listen:5672,fork,reuseaddr tcp-connect:todo-rabbitmq:5672 &
-        socat -d -d tcp-listen:15672,fork,reuseaddr tcp-connect:todo-rabbitmq:15672 &
+      /bin/sh -c "
+        socat -d -d tcp-listen:5432,fork,reuseaddr tcp-connect:postgres:5432 &
+        socat -d -d tcp-listen:6379,fork,reuseaddr tcp-connect:redis:6379 &
+        socat -d -d tcp-listen:5672,fork,reuseaddr tcp-connect:rabbitmq:5672 &
+        socat -d -d tcp-listen:15672,fork,reuseaddr tcp-connect:rabbitmq:15672 &
         wait
       "
     ports:
