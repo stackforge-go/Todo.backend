@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stackforge-go/Todo.backend/internal/app"
+	"github.com/stackforge-go/Todo.backend/internal/features/users"
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/logger"
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/logger/zap"
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/postgres/pgx"
@@ -103,6 +104,18 @@ func run() error {
 	// Dependency Injection
 	// ------------------------------------------------------------------
 
+	// Repositories
+
+	usersPgRepo := users.NewPgRepository(pgPool)
+
+	// Services
+
+	usersSVC := users.NewService(usersPgRepo)
+
+	// HTTP Handlers
+
+	usersHTTPHandler := users.NewHTTPHandler(usersSVC)
+
 	// ------------------------------------------------------------------
 	// RabbitMQ router (consumers)
 	// ------------------------------------------------------------------
@@ -113,7 +126,7 @@ func run() error {
 	// HTTP router
 	// ------------------------------------------------------------------
 	httpRouterV1 := http.NewRouter(http.APIVersion("v1"))
-	httpRouterV1.AddRoutes([]http.Route{})
+	httpRouterV1.AddRoutes(usersHTTPHandler.Routes())
 
 	// ------------------------------------------------------------------
 	// HTTP server
