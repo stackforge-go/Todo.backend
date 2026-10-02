@@ -27,6 +27,7 @@ const (
 		FROM todo.users
 		ORDER BY created_at DESC, id DESC
 		LIMIT $1 OFFSET $2`
+	selectCount = `SELECT COUNT(*) FROM todo.users`
 )
 
 // ============================================================
@@ -34,11 +35,11 @@ const (
 // ============================================================
 
 type pgRepository struct {
-	db postgres.Pool
+	pool postgres.Pool
 }
 
-func NewPgRepository(db postgres.Pool) *pgRepository {
-	return &pgRepository{db: db}
+func NewPgRepository(pool postgres.Pool) *pgRepository {
+	return &pgRepository{pool: pool}
 }
 
 var _ Repository = (*pgRepository)(nil)
@@ -48,7 +49,7 @@ var _ Repository = (*pgRepository)(nil)
 // ============================================================
 
 func (r *pgRepository) Save(ctx context.Context, u *User) error {
-	ctx, cancel := context.WithTimeout(ctx, r.db.OpTimeout())
+	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
 	defer cancel()
 
 	const q = `
@@ -66,7 +67,7 @@ func (r *pgRepository) Save(ctx context.Context, u *User) error {
 			full_name      = EXCLUDED.full_name
 	`
 
-	_, err := r.db.Exec(ctx, q,
+	_, err := r.pool.Exec(ctx, q,
 		u.ID,
 		u.Version,
 		u.CreatedAt,
@@ -86,8 +87,8 @@ func (r *pgRepository) Save(ctx context.Context, u *User) error {
 // FindByID
 // ============================================================
 
-func (r *pgRepository) FindByID(ctx context.Context, id uuid.UUID) (*User, error) {
-	ctx, cancel := context.WithTimeout(ctx, r.db.OpTimeout())
+func (r *pgRepository) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
 	defer cancel()
 
 	return r.scanOne(ctx, selectByID, id)
@@ -98,7 +99,7 @@ func (r *pgRepository) FindByID(ctx context.Context, id uuid.UUID) (*User, error
 // ============================================================
 
 func (r *pgRepository) List(ctx context.Context, limit, offset int) ([]User, error) {
-	ctx, cancel := context.WithTimeout(ctx, r.db.OpTimeout())
+	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
 	defer cancel()
 
 	return r.scanMany(ctx, selectList, limit, offset)
@@ -109,13 +110,11 @@ func (r *pgRepository) List(ctx context.Context, limit, offset int) ([]User, err
 // ============================================================
 
 func (r *pgRepository) Count(ctx context.Context) (int64, error) {
-	ctx, cancel := context.WithTimeout(ctx, r.db.OpTimeout())
+	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
 	defer cancel()
 
-	const q = `SELECT COUNT(*) FROM todo.users`
-
 	var total int64
-	if err := r.db.QueryRow(ctx, q).Scan(&total); err != nil {
+	if err := r.pool.QueryRow(ctx, selectCount).Scan(&total); err != nil {
 		return 0, err
 	}
 	return total, nil
@@ -126,12 +125,12 @@ func (r *pgRepository) Count(ctx context.Context) (int64, error) {
 // ============================================================
 
 func (r *pgRepository) Delete(ctx context.Context, id uuid.UUID) error {
-	ctx, cancel := context.WithTimeout(ctx, r.db.OpTimeout())
+	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
 	defer cancel()
 
 	const q = `DELETE FROM todo.users WHERE id = $1`
 
-	_, err := r.db.Exec(ctx, q, id)
+	_, err := r.pool.Exec(ctx, q, id)
 	return err
 }
 
@@ -142,7 +141,7 @@ func (r *pgRepository) Delete(ctx context.Context, id uuid.UUID) error {
 // scanOne — читает одну строку. Возвращает *User,
 // потому что nil = «не найдено».
 func (r *pgRepository) scanOne(ctx context.Context, q string, args ...any) (*User, error) {
-	u, err := scanUser(r.db.QueryRow(ctx, q, args...))
+	u, err := scanUser(r.pool.QueryRow(ctx, q, args...))
 	if errors.Is(err, postgres.ErrNoRows) {
 		return nil, ErrNotFound
 	}
@@ -155,7 +154,7 @@ func (r *pgRepository) scanOne(ctx context.Context, q string, args ...any) (*Use
 // scanMany — читает список строк. Возвращает []User.
 // make — не-nil срез, чтобы JSON был [] а не null.
 func (r *pgRepository) scanMany(ctx context.Context, q string, args ...any) ([]User, error) {
-	rows, err := r.db.Query(ctx, q, args...)
+	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
 	}
