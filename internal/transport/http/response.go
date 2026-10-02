@@ -27,6 +27,10 @@ func (r *Response) Header() http.Header {
 	return r.w.Header()
 }
 
+func (r *Response) SetCookie(cookie *http.Cookie) {
+	http.SetCookie(r.w, cookie)
+}
+
 func (r *Response) Status() int {
 	return r.statusCode
 }

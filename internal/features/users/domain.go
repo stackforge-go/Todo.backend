@@ -14,7 +14,12 @@ import (
 // ============================================================
 
 const (
-	maxEmailLen    = 254
+	// maxEmailLen — максимальная длина email в символах.
+	// Соответствует VARCHAR(254) в БД (стандарт RFC 5321).
+	maxEmailLen = 254
+
+	// maxFullNameLen — максимальная длина full_name в символах.
+	// Соответствует VARCHAR(150) в БД.
 	maxFullNameLen = 150
 )
 
@@ -22,6 +27,8 @@ const (
 // Ошибки домена
 // ============================================================
 
+// Доменные ошибки. Простые errors.New — без зависимости
+// от infrastructure. Маппятся в errs.AppError на уровне usecase.
 var (
 	ErrEmailRequired    = errors.New("email is required")
 	ErrEmailInvalid     = errors.New("email invalid")
@@ -29,6 +36,11 @@ var (
 	ErrPasswordRequired = errors.New("password hash is required")
 	ErrEmailTaken       = errors.New("email already taken")
 	ErrNotFound         = errors.New("user not found")
+
+	// ErrInvalidCredentials — email не найден ИЛИ пароль неверный.
+	// Одна ошибка на оба случая — защита от user enumeration:
+	// клиент не может узнать, зарегистрирован ли email в системе.
+	ErrInvalidCredentials = errors.New("invalid credentials")
 )
 
 // ============================================================
@@ -37,8 +49,8 @@ var (
 
 // User — доменная сущность. Внутренняя, не покидает фичу.
 //
-// Содержит приватные поля (PasswordHash), технические (Version).
-// Наружу отдаётся PublicUser.
+// Содержит приватные поля (PasswordHash) и технические (Version).
+// Наружу отдаётся PublicUser — без PasswordHash и Version.
 type User struct {
 	ID            uuid.UUID
 	Version       int64
@@ -50,13 +62,16 @@ type User struct {
 	EmailVerified bool
 }
 
-// CreateUser — создание нового пользователя.
+// CreateUser — единственный способ создать нового пользователя.
 //
 // Задаёт умолчания:
-//   - Version = 1
+//   - Version = 1             — первая версия агрегата
 //   - CreatedAt = UpdatedAt = now
+//   - Email нормализуется (lower + trim)
+//   - FullName тримится
 //
-// Снаружи передаётся только то, что реально варьируется.
+// Валидация вызывается внутри — возвращённый User всегда валиден.
+// EmailVerified передаётся снаружи: auth → false, admin → true.
 func CreateUser(
 	id uuid.UUID,
 	email string,
@@ -83,10 +98,10 @@ func CreateUser(
 	return u, nil
 }
 
-// Reconstitute — восстановление из БД. Все поля явно.
+// Reconstitute — восстановление User из БД. Все поля явно.
 //
-// Используется только репозиторием. Никаких умолчаний —
-// данные уже валидны в БД.
+// Используется только репозиторием. Никаких умолчаний и валидации —
+// данные уже валидны в БД (при записи прошли Validate).
 func Reconstitute(
 	id uuid.UUID,
 	version int64,
@@ -109,6 +124,9 @@ func Reconstitute(
 }
 
 // Validate проверяет инварианты сущности.
+//
+// Длина считается в СИМВОЛАХ (utf8.RuneCountInString), а не в байтах,
+// чтобы совпадать с VARCHAR(N) в Postgres.
 func (u *User) Validate() error {
 	if u.Email == "" {
 		return ErrEmailRequired
@@ -127,7 +145,8 @@ func (u *User) Validate() error {
 
 // Touch обновляет UpdatedAt и инкрементит Version.
 //
-// Вызывается перед Update, чтобы оптимистичная блокировка работала.
+// Вызывается перед Update: Version используется для оптимистичной
+// блокировки (ON CONFLICT ... WHERE version = ...).
 func (u *User) Touch(now time.Time) {
 	u.Version++
 	u.UpdatedAt = now.UTC()
@@ -139,10 +158,10 @@ func (u *User) Touch(now time.Time) {
 
 // PublicUser — публичное представление пользователя.
 //
-// Не содержит приватных полей (PasswordHash) и технических (Version).
-// Возвращается из Service наружу: другим фичам, транспорту.
+// Не содержит PasswordHash и Version — их нельзя показывать наружу.
+// Возвращается из Usecase: другим фичам, транспорту.
 //
-// Это value object — возвращается по значению, не по указателю.
+// Value object: по значению, не по указателю.
 type PublicUser struct {
 	ID            uuid.UUID
 	Email         string

@@ -10,6 +10,8 @@ import (
 type Config struct {
 	ShutdownTimeout time.Duration  `envconfig:"SHUTDOWN_TIMEOUT" default:"30s"`
 	TimeZone        *time.Location `envconfig:"TIME_ZONE" default:"UTC"`
+	Env             string         `envconfig:"ENV" default:"production"`
+	CookieDomain    string         `envconfig:"COOKIE_DOMAIN" required:"true"`
 }
 
 func NewConfig() (Config, error) {

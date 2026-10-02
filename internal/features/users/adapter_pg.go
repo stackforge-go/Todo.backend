@@ -14,19 +14,28 @@ import (
 // ============================================================
 
 const (
-	// selectColumns — общий набор колонок для всех SELECT'ов.
+	// selectColumns — общий набор колонок для всех SELECT.
 	// Меняется здесь — меняется везде.
 	selectColumns = `
 		id, version, created_at, updated_at,
 		email, email_verified, password_hash, full_name
 	`
 
+	// selectByID — одна строка по id.
 	selectByID = `SELECT ` + selectColumns + ` FROM todo.users WHERE id = $1`
 
+	// selectByID — одна строка по id.
+	selectByEmail = `SELECT ` + selectColumns + ` FROM todo.users WHERE email = $1`
+
+	// selectList — страница пользователей.
+	// Стабильная сортировка: created_at DESC, id DESC
+	// (id — тайбрейкер при одинаковых created_at).
 	selectList = `SELECT ` + selectColumns + `
 		FROM todo.users
 		ORDER BY created_at DESC, id DESC
 		LIMIT $1 OFFSET $2`
+
+	// selectCount — общее количество для пагинации.
 	selectCount = `SELECT COUNT(*) FROM todo.users`
 )
 
@@ -34,6 +43,7 @@ const (
 // Repository
 // ============================================================
 
+// pgRepository — реализация Repository через Postgres (pgx).
 type pgRepository struct {
 	pool postgres.Pool
 }
@@ -48,6 +58,10 @@ var _ Repository = (*pgRepository)(nil)
 // Save
 // ============================================================
 
+// Save делает UPSERT по id.
+//
+// При конфликте UNIQUE (email) возвращает ErrEmailTaken —
+// это единственный источник истины для уникальности email.
 func (r *pgRepository) Save(ctx context.Context, u *User) error {
 	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
 	defer cancel()
@@ -84,9 +98,12 @@ func (r *pgRepository) Save(ctx context.Context, u *User) error {
 }
 
 // ============================================================
-// FindByID
+// GetByID
 // ============================================================
 
+// GetByID возвращает пользователя по id.
+//
+// ErrNotFound — если строки нет (маппится из postgres.ErrNoRows).
 func (r *pgRepository) GetByID(ctx context.Context, id uuid.UUID) (*User, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
 	defer cancel()
@@ -95,9 +112,26 @@ func (r *pgRepository) GetByID(ctx context.Context, id uuid.UUID) (*User, error)
 }
 
 // ============================================================
+// GetByEmail
+// ============================================================
+
+// GetByEmail возвращает пользователя по email.
+//
+// ErrNotFound — если строки нет (маппится из postgres.ErrNoRows).
+func (r *pgRepository) GetByEmail(ctx context.Context, email string) (*User, error) {
+	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
+	defer cancel()
+
+	return r.scanOne(ctx, selectByEmail, email)
+}
+
+// ============================================================
 // List
 // ============================================================
 
+// List возвращает страницу пользователей.
+//
+// Лимит/офсет уже нормализованы в usecase.
 func (r *pgRepository) List(ctx context.Context, limit, offset int) ([]User, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
 	defer cancel()
@@ -109,6 +143,8 @@ func (r *pgRepository) List(ctx context.Context, limit, offset int) ([]User, err
 // Count
 // ============================================================
 
+// Count возвращает общее количество пользователей.
+// Используется в usecase для пагинации.
 func (r *pgRepository) Count(ctx context.Context) (int64, error) {
 	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
 	defer cancel()
@@ -124,6 +160,9 @@ func (r *pgRepository) Count(ctx context.Context) (int64, error) {
 // Delete
 // ============================================================
 
+// Delete удаляет пользователя по id.
+//
+// Идемпотентен: удаление несуществующего — не ошибка.
 func (r *pgRepository) Delete(ctx context.Context, id uuid.UUID) error {
 	ctx, cancel := context.WithTimeout(ctx, r.pool.OpTimeout())
 	defer cancel()
@@ -138,8 +177,8 @@ func (r *pgRepository) Delete(ctx context.Context, id uuid.UUID) error {
 // scan helpers
 // ============================================================
 
-// scanOne — читает одну строку. Возвращает *User,
-// потому что nil = «не найдено».
+// scanOne читает одну строку. Возвращает *User, потому что
+// nil = «не найдено».
 func (r *pgRepository) scanOne(ctx context.Context, q string, args ...any) (*User, error) {
 	u, err := scanUser(r.pool.QueryRow(ctx, q, args...))
 	if errors.Is(err, postgres.ErrNoRows) {
@@ -151,8 +190,8 @@ func (r *pgRepository) scanOne(ctx context.Context, q string, args ...any) (*Use
 	return &u, nil
 }
 
-// scanMany — читает список строк. Возвращает []User.
-// make — не-nil срез, чтобы JSON был [] а не null.
+// scanMany читает список строк. Возвращает []User.
+// make([]User, 0) — не-nil срез, чтобы JSON был [] а не null.
 func (r *pgRepository) scanMany(ctx context.Context, q string, args ...any) ([]User, error) {
 	rows, err := r.pool.Query(ctx, q, args...)
 	if err != nil {
@@ -177,7 +216,9 @@ func (r *pgRepository) scanMany(ctx context.Context, q string, args ...any) ([]U
 }
 
 // scanUser — общий хелпер: сканирует строку в User (значение).
+//
 // Работает и для QueryRow, и для Rows — у обоих есть Scan.
+// full_name в БД nullable → сканируем в *string.
 func scanUser(row interface {
 	Scan(dest ...any) error
 }) (User, error) {
@@ -217,7 +258,7 @@ func scanUser(row interface {
 }
 
 // nullableString — "" → nil, иначе &s.
-// Хелпер для nullable-полей в БД.
+// Для nullable-полей в БД (full_name).
 func nullableString(s string) *string {
 	if s == "" {
 		return nil
