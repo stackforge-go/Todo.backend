@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/errs"
 	"github.com/stackforge-go/Todo.backend/internal/transport/http"
 )
@@ -35,9 +36,11 @@ func (h *httpHandler) Routes() []http.Route {
 // DTO
 // ============================================================
 
-// UserResponse — публичное представление пользователя.
-// Используется в users и auth.
-type UserResponse struct {
+// userResponse — публичное представление пользователя.
+//
+// Не содержит PasswordHash и Version. Используется в users и auth,
+// чтобы формат user во всех эндпоинтах был одинаков.
+type userResponse struct {
 	ID            uuid.UUID `json:"id"`
 	EmailVerified bool      `json:"emailVerified"`
 	Email         string    `json:"email"`
@@ -47,8 +50,8 @@ type UserResponse struct {
 }
 
 // ToUserResponse конвертирует доменное представление в DTO.
-func ToUserResponse(u PublicUser) UserResponse {
-	return UserResponse{
+func ToUserResponse(u PublicUser) userResponse {
+	return userResponse{
 		ID:            u.ID,
 		EmailVerified: u.EmailVerified,
 		Email:         u.Email,
@@ -62,8 +65,10 @@ func ToUserResponse(u PublicUser) UserResponse {
 // FindByID
 // ============================================================
 
+// findByIDResponse — обёртка {user: {...}} для согласованности
+// с auth и другими эндпоинтами.
 type findByIDResponse struct {
-	User UserResponse `json:"user"`
+	User userResponse `json:"user"`
 }
 
 func (h *httpHandler) FindByID(ctx *http.Context) {
@@ -91,8 +96,12 @@ func (h *httpHandler) FindByID(ctx *http.Context) {
 // List
 // ============================================================
 
+// listResponse — формат ответа списка.
+//
+// Users + Total + Limit/Offset — фактически применённые
+// (после нормализации в usecase).
 type listResponse struct {
-	Users  []UserResponse `json:"users"`
+	Users  []userResponse `json:"users"`
 	Total  int64          `json:"total"`
 	Limit  int            `json:"limit"`
 	Offset int            `json:"offset"`
@@ -126,7 +135,7 @@ func (h *httpHandler) List(ctx *http.Context) {
 		return
 	}
 
-	users := make([]UserResponse, 0, len(out.Users))
+	users := make([]userResponse, 0, len(out.Users))
 	for _, u := range out.Users {
 		users = append(users, ToUserResponse(u))
 	}

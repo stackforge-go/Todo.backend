@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/stackforge-go/Todo.backend/internal/app"
+	"github.com/stackforge-go/Todo.backend/internal/features/auth"
 	"github.com/stackforge-go/Todo.backend/internal/features/users"
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/hasher"
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/logger"
@@ -16,6 +17,7 @@ import (
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/postgres/pgx"
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/redis/goredis"
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/smtp/mailer"
+	"github.com/stackforge-go/Todo.backend/internal/infrastructure/token/golangjwt"
 	"github.com/stackforge-go/Todo.backend/internal/transport/http"
 	"github.com/stackforge-go/Todo.backend/internal/transport/rabbitmq"
 )
@@ -105,6 +107,11 @@ func run() error {
 	// Dependency Injection
 	// ------------------------------------------------------------------
 
+	// Shared
+
+	hasher := hasher.NewBcryptHasher()
+	tokenIssuer := golangjwt.NewIssuer(golangjwt.NewConfigMust())
+
 	// Repositories
 
 	usersPgRepo := users.NewPgRepository(pgPool)
@@ -117,12 +124,21 @@ func run() error {
 
 	usersUC := users.NewUsecase(
 		usersCachedRepo,
-		hasher.NewBcryptHasher(),
+		hasher,
+	)
+	authUC := auth.NewUsecase(
+		usersUC,
+		tokenIssuer,
 	)
 
 	// HTTP Handlers
 
 	usersHTTPHandler := users.NewHTTPHandler(usersUC)
+	authHTTPHandler := auth.NewHTTPHandler(
+		authUC,
+		auth.WithCookieSecure(cfg.Env == "production"),
+		auth.WithCookieDomain(cfg.CookieDomain),
+	)
 
 	// ------------------------------------------------------------------
 	// RabbitMQ router (consumers)
@@ -135,6 +151,7 @@ func run() error {
 	// ------------------------------------------------------------------
 	httpRouterV1 := http.NewRouter(http.APIVersion("v1"))
 	httpRouterV1.AddRoutes(usersHTTPHandler.Routes())
+	httpRouterV1.AddRoutes(authHTTPHandler.Routes())
 
 	// ------------------------------------------------------------------
 	// HTTP server

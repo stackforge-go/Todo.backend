@@ -101,3 +101,13 @@ func (r *Request) BindJSON(dest any) error {
 
 	return nil
 }
+
+// Cookie возвращает значение cookie по имени.
+// Возвращает "" если cookie нет.
+func (r *Request) Cookie(name string) string {
+	c, err := r.r.Cookie(name)
+	if err != nil {
+		return ""
+	}
+	return c.Value
+}
