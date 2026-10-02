@@ -10,6 +10,7 @@ import (
 
 	"github.com/stackforge-go/Todo.backend/internal/app"
 	"github.com/stackforge-go/Todo.backend/internal/features/users"
+	"github.com/stackforge-go/Todo.backend/internal/infrastructure/hasher"
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/logger"
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/logger/zap"
 	"github.com/stackforge-go/Todo.backend/internal/infrastructure/postgres/pgx"
@@ -108,13 +109,20 @@ func run() error {
 
 	usersPgRepo := users.NewPgRepository(pgPool)
 
+	// Cached
+
+	usersCachedRepo := users.NewCachedRepository(redisPool, usersPgRepo)
+
 	// Services
 
-	usersSVC := users.NewService(usersPgRepo)
+	usersUC := users.NewUsecase(
+		usersCachedRepo,
+		hasher.NewBcryptHasher(),
+	)
 
 	// HTTP Handlers
 
-	usersHTTPHandler := users.NewHTTPHandler(usersSVC)
+	usersHTTPHandler := users.NewHTTPHandler(usersUC)
 
 	// ------------------------------------------------------------------
 	// RabbitMQ router (consumers)

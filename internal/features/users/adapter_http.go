@@ -9,13 +9,11 @@ import (
 )
 
 type httpHandler struct {
-	svc Service
+	uc Usecase
 }
 
-func NewHTTPHandler(svc Service) *httpHandler {
-	return &httpHandler{
-		svc: svc,
-	}
+func NewHTTPHandler(uc Usecase) *httpHandler {
+	return &httpHandler{uc: uc}
 }
 
 func (h *httpHandler) Routes() []http.Route {
@@ -78,7 +76,7 @@ func (h *httpHandler) FindByID(ctx *http.Context) {
 		return
 	}
 
-	out, err := h.svc.FindByID(ctx.Context(), FindByIDParams{ID: id})
+	out, err := h.uc.GetByID(ctx.Context(), GetByIDParams{ID: id})
 	if err != nil {
 		ctx.Error(err)
 		return
@@ -119,7 +117,7 @@ func (h *httpHandler) List(ctx *http.Context) {
 		return
 	}
 
-	out, err := h.svc.List(ctx.Context(), ListParams{
+	out, err := h.uc.List(ctx.Context(), ListParams{
 		Limit:  limit,
 		Offset: offset,
 	})

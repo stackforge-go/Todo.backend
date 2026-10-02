@@ -33,7 +33,7 @@ func NewPool(ctx context.Context, config config) (*Pool, error) {
 	}, nil
 }
 
-func (p *Pool) Get(ctx context.Context, key string) redispool.StatusCmd {
+func (p *Pool) Get(ctx context.Context, key string) redispool.StringCmd {
 	cmd := p.client.Get(ctx, key)
 
 	return goredisStringCmd{cmd}
@@ -57,7 +57,7 @@ func (p *Pool) HGet(ctx context.Context, key string, field string) redispool.Str
 	return goredisStringCmd{cmd}
 }
 
-func (p *Pool) HSet(ctx context.Context, key string, values ...any) goredisIntCmd {
+func (p *Pool) HSet(ctx context.Context, key string, values ...any) redispool.IntCmd {
 	cmd := p.client.HSet(ctx, key, values...)
 
 	return goredisIntCmd{cmd}
